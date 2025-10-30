@@ -2,7 +2,7 @@
 ## Legacy-System-Reverse-Engineering-Challenge
 
 ## Team Members
-- Premasinghe Jayath
+- Jayath Premasinghe
 - Ambe Mbong-Nwi Nchang
 
 ## Goal
