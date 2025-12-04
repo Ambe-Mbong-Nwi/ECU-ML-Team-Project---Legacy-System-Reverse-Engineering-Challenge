@@ -78,7 +78,7 @@ From the table above, we see that:
 
 The distribution plots below show us how each feature is spread out.
 
-```{r echo = FALSE}
+```{r echo = FALSE, fig.cap="Figure 1: Distribution Plots for the Original Features in the Dataset"}
 # libraries
 library(ggplot2)
 library(gridExtra)
@@ -113,6 +113,7 @@ grid.arrange(p1, p2, p3, p4, ncol = 2)
 # Optionally, you can save the output
 # ggsave("histograms.png", width = 16, height = 10)
 ```
+
 
 From the distribution plots above, we notice that:
 
@@ -387,7 +388,7 @@ data %>%
 
 #### 4.3 Distribution Analysis for the Engineered Features
 
-```{r echo = FALSE}
+```{r echo = FALSE, fig.cap="Figure 4: Distribution plots for some of the Derived Features in the Dataset (Part 1)"}
 library(ggplot2)
 library(patchwork)
 
@@ -417,8 +418,7 @@ print(final_plot)
 
 The distributions above show that both miles_per_day and receipts_per_day are highly right-skewed, with most observations clustered at lower values and a long tail of larger, less frequent values. Applying transformations helps reduce this skew: log_receipts produces a more concentrated and smoother distribution, though still slightly skewed, while sqrt_miles substantially spreads out the lower-end values and results in a more symmetric, unimodal shape. Overall, the transformed variables appear more suitable for statistical modeling that assumes approximate normality.
 
-```{r echo = FALSE}
-
+```{r echo = FALSE, fig.cap="Figure 5: Distribution plots for some of the Derived Features in the Dataset (Part 2)"}
 new_continuous_features <- c(
   "days_x_miles", "days_x_receipts", "miles_x_receipts",
   "miles_sq"
@@ -445,13 +445,69 @@ The engineered interaction features shown in the plots above all display heavily
 
 We tried various models:
 
+#### 5.1 Linear Regression Variants
 
-### 5.1 Linear Regression Variants
+To evaluate the effect of feature engineering, we tested four different regression models. Simple Linear Regression, Polynomial Regression (Degree 2), Ridge Regression, and Lasso Regression using both the original dataset (containing only the raw trip_duration_days, miles_traveled, total_receipts_amount, and expected_output) and the dataset enriched with 27 engineered features. The comparison between the two datasets clearly shows that incorporating the derived features consistently improved model performance across all regression types. In particular, we observed noticeable reductions in MAE and RMSE as well as higher model scores, demonstrating that the additional behavioral, rule-based, and nonlinear features provided the models with more meaningful signals about how the legacy reimbursement system behaves.
 
 <figure style="text-align: left;">
-    <img src="Images/regression.png" alt="Correlation matrix between the features" width="95%" height="auto">
-    <figcaption>Figure 2: Scatter-Plot Matrix with Correlation Coefficients and Trendlines of the various features.</figcaption>
+    <img src="Images/regression.png" alt="Comparison of Model Performance between Linear Regression Variants: Original vs. Derived Feature Datasets" width="95%" height="auto">
+    <figcaption>Figure 6: Comparison of Model Performance between Linear Regression Variants: Original vs. Derived Feature Datasets.</figcaption>
 </figure>
+
+Among all models tested, the Polynomial Regression (Degree 2) model produced the strongest results when trained on the derived features. It achieved the lowest MAE (96.08), a competitive score (6906), and the highest number of Close Matches (4), indicating that it not only fits the underlying structure better but also more frequently predicts reimbursements close to the true expected outputs. This suggests that the legacy system likely embeds non-linear decision patterns, which are better captured by polynomial relationships than by purely linear models. Ridge and Lasso Regression also improved with the engineered features, but not as dramatically as the polynomial model, reinforcing the idea that the reimbursement logic contains interactions, thresholds, and non-linear conditions that simple linear approaches cannot fully capture. Overall, the results confirm that feature engineering played a critical role in reverse-engineering the system’s behavior and significantly improved predictive accuracy across all modeling techniques.
+
+#### 5.2 Tree-Based Methods
+
+#### 5.3 Advanced Techniques
+
+#### 5.4 Rule-Based Learning
+
+##### 5.4.1 Symbolic Regression Results and Summary of Key Findings.
+
+Because symbolic regression can sometimes generate complicated equations that are hard to evaluate, we first needed a baseline model to compare against. Ridge Regression was chosen as this baseline because it is a simple, stable, and reliable linear model that performs well when the dataset contains many features, including interaction terms and non-linear transformations. Symbolic regression, on the other hand, tries to automatically discover the “best possible” mathematical formula that explains the data. By comparing the symbolic regression results against the Ridge baseline, we could see whether more complex equation discovery truly adds value, or whether a regularized linear model already captures the important patterns.
+
+From our analyses, we found that:
+
+- The Ridge baseline model performed the strongest overall, achieving an MAE of $77.83 and an RMSE of $105.52, indicating that a regularized linear model still captures the reimbursement logic more effectively than the symbolic equations generated by PySR.
+
+- Ridge regression identified several important predictors, including trip duration, miles traveled, total receipts, log-transformed receipts, square-root mileage, long-trip flags, high-receipt indicators, low-spend conditions, penalties, and multiple interaction and squared terms which confirms that the legacy system relies on a mix of nonlinear and rule-based relationships.
+
+- The more advanced PySR configuration, which included power operators and unary functions (sqrt, log, exp, abs, relu), produced better results than the simpler setups and reduced the MAE from $116.31 to $106.65, indicating that the system behaves in ways that require nonlinear and piecewise expressions.
+
+- Even the best PySR configuration still performed worse than the Ridge baseline, suggesting that the reimbursement rules are too complex, conditional, or noisy to be captured by a single compact symbolic formula. We can therefore assume that while nonlinear transformations and threshold behaviors are essential to modeling the system, they are better represented through engineered features and regularized regression than through standalone symbolic equations.
+
+##### 5.4.2 Decision Tree Rule Extraction, Summary of Findings.
+
+To better understand the hidden logic behind the legacy reimbursement system, we used a Decision Tree Regressor as an interpretable machine-learning model. Unlike black-box models such as Random Forests or Gradient Boosting, a decision tree provides a clear set of “if-then” rules, allowing us to extract structured decision paths that resemble hand-crafted business rules.
+
+From our analyses, we found that:
+
+- The decision tree achieved an R² score of 0.899, meaning it explains almost 90% of the variation in the reimbursement amounts. This is a strong indication that the engineered features capture the core structure of the legacy system’s logic.
+
+- The model’s RMSE of 145.25 shows that although predictions are not perfect, the tree still provides reasonably accurate outputs for a rule-based estimator.
+
+- The extracted rules reveal that the tree relies heavily on non-linear interaction features such as receipts_sq, days_x_miles, days_x_receipts, and miles_x_receipts, confirming that the system’s behavior cannot be described using simple linear relationships.
+
+- The first major split in the tree is based on receipts_sq, which strongly separates low/medium spend cases from high spend cases. This shows that the system treats high-receipt trips very differently from lower-receipt trips.
+
+- Many important branches depend on days_x_miles (trip duration × mileage), suggesting the reimbursement logic accounts for trip intensity rather than looking at duration or mileage in isolation.
+
+- days_x_receipts is another key decision point that appears several times, indicating that the legacy logic evaluates total spending in relation to trip length, similar to how a “spend per day” measure would behave.
+
+##### 5.4.3 Associate Rule Mining Summary of Findings.
+
+We used the Association rule mining technique to discover frequent patterns and co-occurring conditions in the dataset. The Apriori algorithm was used to find frequent itemsets (combinations of conditions that appear often), and FP-Growth was used to generate association rule statements of the form: “If conditions A and B happen, then condition C is also likely to happen.”
+
+From our analyses, we found that:
+
+- The strongest rules all involve long trips, high receipts, and vacation-penalty indicators, showing that these conditions frequently co-occur in the data and are highly connected in how the system behaves.
+
+- Many rules show that when a trip is both long and has high receipts, it almost always activates other flags such as is_receipts_over_800 or is_vacation_penalty, confirming the interview claims that long, expensive trips trigger tighter scrutiny or penalties.
+
+- The rule with the highest lift (3.59) shows that: If a trip is flagged for vacation penalty, is a long trip, and exceeds the $800 receipt threshold, then it is extremely likely to also be a high-receipt trip.
+
+- The presence of features like is_long_trip, is_receipts_over_800, and high_receipts across almost all strong rules shows that spending behavior and trip length are the dominant drivers in the system’s logic.
+
 
 ### 6. Results and Insights
 ### 7. Recommendations
