@@ -24,19 +24,18 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 ### 1. Executive Summary
-Purpose of the reverse engineering project
 
-Overview of the data
+The objective of this project was to reverse engineer a legacy travel reimbursement system whose internal logic was undocumented, opaque, and suspected to contain both formal business rules and undocumented behavioral adjustments. Using a dataset of 1,000 historical reimbursement cases, along with insights gathered from stakeholder interviews, we sought to reconstruct the system in a way that is accurate, interpretable, and suitable for replacement or auditing purposes.
 
-High-level approach
+The analysis began with exploratory data analysis to understand the distributions, correlations, and outliers present in the data. Early findings showed that reimbursement outcomes are strongly driven by receipt amounts, moderately influenced by trip duration and mileage, and shaped by non-linear relationships and threshold effects. Interviews with accounting, sales, procurement, and HR teams further suggested the presence of tiered rules, efficiency incentives, penalties for extreme behavior, rounding quirks, and possible system anomalies.
 
-Critical patterns discovered
+Based on these insights, we formulated explicit hypotheses about the business logic governing per-diem rates, mileage reimbursement, receipt handling, efficiency metrics, and penalties. These hypotheses were translated into engineered features and a baseline rule-based reimbursement calculator. While this baseline model successfully captured the structure of the system, it exhibited large systematic errors, confirming that hidden adjustments and non-linear corrections were also present.
 
-Key business logic inferred
+To address this, we evaluated a wide range of statistical and machine learning models, including linear regression variants, tree-based models, boosting frameworks, neural networks, symbolic regression, and ensemble methods. These experiments revealed that while advanced models such as XGBoost and stacking regressors achieved strong predictive performance, they lacked the transparency needed to fully explain the system’s behavior on their own.
 
-Main model insights
+The final solution adopts a **hybrid rule-based and machine learning approach.** Explicit business rules provide a structured baseline, while gradient boosting models learn and correct the residual errors left by the rules. The final predictions are further refined using isotonic calibration to correct remaining systematic bias and cent-level inconsistencies.
 
-Recommendations for system improvement
+The fully calibrated hybrid model achieves a mean absolute error **(MAE) of $33.56**, produces **20 exact matches**, and yields **36 predictions within $1.00** of the true reimbursement value. Diagnostic slicing confirms that major sources of bias such as short-trip underpayment, long-trip overpayment, and receipt sweet-spot inflation are almost entirely eliminated. Overall, the project demonstrates that the legacy reimbursement system is fundamentally rule-based, but augmented with complex, non-linear adjustments that are best captured through a constrained, interpretable hybrid modeling strategy.
 
 ### 2. Data Exploration Summary
 
@@ -50,25 +49,34 @@ Recommendations for system improvement
 
 ##### 2.1.1 Input Variables
 
+<div style="text-align: center; font-size: smaller; opacity: 0.7; margin-bottom: 5px;">
+  Table 1: Input Variables Description
+</div>
+
   | Variable | Description |
   |---|---|
   trip_duration_days | Number of days spent traveling (integer) |
   miles_traveled | Total miles traveled (integer) |
   total_receipts_amount | Total dollar amount of receipts (float) |
-  
-##### 1.1.1 Output Variables
+
+<div style="text-align: center; font-size: smaller; opacity: 0.7; margin-bottom: 5px; margin-top: 10px">
+  Table 2: Output Variables Description
+</div>
 
   | Variable | Description |
   |---|---|
   expected_output | Single numeric reimbursement amount (float, rounded to 2 decimal places) |
   
 #### 2.2 Summary Statistics for the Data
+<div style="text-align: center; font-size: smaller; opacity: 0.7; margin-bottom: 5px;">
+  Table 3: Summary Statistics for the Data
+</div>
 ```{r echo = FALSE}
 df  <- read.csv('public_cases.csv', head=TRUE, sep=',')
 summary(df)
 ```
   
-From the table above, we see that:
+From the Table 3, we see that:
 - Trips range from 1 to 14 days, and the average duration is ~7 days.
 - For miles_traveled, values range from 5 to 1,317 miles, with the mean ≈ 597 miles and median (50th percentile) ≈ 617 miles. The large gap between mean and median indicates a wide, skewed distribution.
 - Total_receipts_amount ranges from $1.42 to over $2,503. This shows substantial variability in spending patterns.
@@ -115,7 +123,7 @@ grid.arrange(p1, p2, p3, p4, ncol = 2)
 ```
 
 
-From the distribution plots above, we notice that:
+From the distribution plots in Figure 1, we notice that:
 
 - Trip Duration Distribution: It appears almost uniformly distributed, meaning trips occur with many different durations, without a dominant pattern.
 
@@ -171,6 +179,10 @@ After going through the interviews as well as looking at the results of our anal
 - Notes — additional clarifications, patterns, or inconsistencies mentioned during interviews.
 
 #### 3.1 Per-Diem Logic
+
+<div style="text-align: center; font-size: smaller; opacity: 0.7; margin-bottom: 5px;">
+  Table 4: Business Logic Findings: Per-Diem Logic
+</div>
   
   | Hypothesis | Evidence Source | Notes |
   |---|---|---|
@@ -180,9 +192,13 @@ After going through the interviews as well as looking at the results of our anal
 
 **Summary**
 
-This table outlines how daily allowances appear to be structured, including a baseline per-diem rate, bonuses for certain trip lengths, and penalties for extremely short or long trips. Overall, the rules aim to encourage moderate, business-typical travel durations.
+Table 4 outlines how daily allowances appear to be structured, including a baseline per-diem rate, bonuses for certain trip lengths, and penalties for extremely short or long trips. Overall, the rules aim to encourage moderate, business-typical travel durations.
   
 #### 3.2 Mileage Logic
+
+<div style="text-align: center; font-size: smaller; opacity: 0.7; margin-bottom: 5px;">
+  Table 5: Business Logic Findings: Mileage Logic
+</div>
   
   | Hypothesis | Evidence | Notes |
   |---|---|---|
@@ -196,6 +212,10 @@ This table outlines how daily allowances appear to be structured, including a ba
 Mileage reimbursement seems to follow a tiered system with a standard rate at low distances, diminishing returns after a threshold, and penalties for unusually high mileage. Interviews also suggest an “efficiency zone” where miles traveled per day receive more favorable treatment.
   
 #### 3.3 Receipt Logic
+
+<div style="text-align: center; font-size: smaller; opacity: 0.7; margin-bottom: 5px;">
+  Table 6: Business Logic Findings: Receipt Logic
+</div>
   
   | Hypothesis | Evidence | Notes |
   |---|---|---|
@@ -209,6 +229,10 @@ Mileage reimbursement seems to follow a tiered system with a standard rate at lo
 Receipts appear to be evaluated not only on total spend but also on spending patterns: mid-range expenses are rewarded, very low or very high spending may be penalized, and small individual receipts can trigger anti-gaming rules. This reflects an effort to discourage both underspending and excessive outliers.
   
 #### 3.4 Efficiency / Multi-Factor Logic
+
+<div style="text-align: center; font-size: smaller; opacity: 0.7; margin-bottom: 5px;">
+  Table 7: Business Logic Findings: Efficiency / Multi-Factor Logic
+</div>
   
   | Hypothesis | Evidence | Notes |
   |---|---|---|
@@ -221,6 +245,10 @@ Receipts appear to be evaluated not only on total spend but also on spending pat
 Efficiency metrics such as miles per day and spend per day seem to influence outcomes, often in combination with trip length. Interview evidence points to several behavioral “clusters,” suggesting that employees may be grouped into travel profiles that affect reimbursement.
   
 #### 3.5 Temporal Effects
+
+<div style="text-align: center; font-size: smaller; opacity: 0.7; margin-bottom: 5px;">
+  Table 8: Business Logic Findings: Temporal Effects
+</div>
   
   | Hypothesis | Evidence | Certainty |
   |---|---|---|
@@ -234,6 +262,10 @@ Efficiency metrics such as miles per day and spend per day seem to influence out
 Timing appears to play a role, with possible boosts at quarter-end and moderate effects based on day of week or monthly cycles. Submission timing may also influence results, although certainty varies across sources.
   
 #### 3.6 User Behavior Memory
+
+<div style="text-align: center; font-size: smaller; opacity: 0.7; margin-bottom: 5px;">
+  Table 9: Business Logic Findings: User Behavior Memory
+</div>
   
 | Hypothesis | Evidence | Notes |
 |---|---|---|
@@ -245,6 +277,10 @@ New employees get lower reimbursements | HR | Could also be behavior learning cu
 Past user behavior may shape future reimbursement outcomes, indicating a possible profile-based or learning-based system. Evidence also suggests that newer employees may receive lower reimbursement levels until their travel patterns stabilize.
   
 #### 3.7 Suspected Bugs / Anomalies
+
+<div style="text-align: center; font-size: smaller; opacity: 0.7; margin-bottom: 5px;">
+  Table 10: Business Logic Findings: Suspected Bugs / Anomalies
+</div>
   
   | Bug Hypothesis | Description | Evidence |
   |---|---|---|
@@ -274,6 +310,10 @@ After adding these rule-based features, we incorporated interaction terms and po
 Ultimately, we compiled all features into a cleaned dataset with **27 engineered features** plus the expected output. This dataset will be used for model training and encapsulates both the statistical patterns and real-world business rules relevant to the legacy system.
 
 The new engineered features are:
+
+<div style="text-align: center; font-size: smaller; opacity: 0.7; margin-bottom: 5px;">
+  Table 11: Engineered Descriptive Features
+</div>
 
 | Variable | Description |
 |---|---|
@@ -306,6 +346,10 @@ miles_sq | Squared mileage to capture nonlinear mileage effects |
 receipts_sq	| Squared receipts to capture nonlinear spend effects |
 
 #### 4.2 Summary Statistics for the Engineered Features
+
+<div style="text-align: center; font-size: smaller; opacity: 0.7; margin-bottom: 5px;">
+  Table 12: Summary Statistics for the Engineered Features
+</div>
 
 ```{r echo = FALSE}
 # Load necessary libraries
@@ -458,7 +502,133 @@ Among all models tested, the Polynomial Regression (Degree 2) model produced the
 
 #### 5.2 Tree-Based Methods
 
+##### 5.2.1 Decision Tree Model Results and Summary of Key Findings
+
+A Decision Tree Regressor was trained with a maximum depth of 6 to balance interpretability and predictive accuracy. This depth constraint ensures that the extracted rules remain understandable while still allowing the model to capture meaningful non-linear structure.
+
+From our analyses, we found that:
+
+The decision tree achieved a mean absolute error (MAE) of $87.48, with one exact match and two predictions within $1.00 of the true reimbursement value. While its predictive accuracy is lower than ensemble-based methods, the decision tree provides significant interpretability benefits and serves as a transparent approximation of the legacy system’s rule structure.
+
+<figure style="text-align: left;">
+    <img src="Images/decision_tree.png" alt="Decision Tree Visualization" width="95%" height="auto">
+    <figcaption>Figure 7: Decision Tree Visualization.</figcaption>
+</figure>
+
+The attached decision tree visualization reveals several important insights into the reimbursement logic:
+
+- Primary Split on receipts_sq: The root node splits on the squared receipts feature, indicating that total spending, especially at higher levels is the single most important driver of reimbursement outcomes. This confirms earlier findings that high-receipt trips are treated fundamentally differently from low- and mid-range spending cases.
+
+- Heavy Use of Interaction Features: Subsequent splits rely heavily on engineered interaction terms such as days_x_miles, days_x_receipts, and miles_x_receipts. This demonstrates that the system evaluates intensity and efficiency of travel rather than raw inputs in isolation.
+
+- Conditional Treatment of Rounding Anomalies: The appearance of flags like is_cents_49 and is_cents_99 in deeper branches provides empirical support for interview claims regarding rounding-related quirks or bugs in the system.
+
+- Piecewise Decision Structure: The tree structure closely resembles a rule-based engine, with distinct reimbursement regimes for low-spend short trips, moderate efficient trips, and high-spend long trips reinforcing the hypothesis that the legacy system is governed by layered business rules rather than a single formula.
+
+Overall, while the decision tree is not the strongest predictor, it is one of the most valuable models for understanding how the system makes decisions.
+
+##### 5.2.2 Random Forest Model Results and Summary of Key Findings
+
+Random Forests improve upon single decision trees by training many trees on bootstrapped samples and averaging their predictions. This approach significantly reduces variance and improves generalization, while still leveraging the non-linear and interaction-based strengths of decision trees.
+
+From our analyses, we found that:
+
+The Random Forest model substantially outperformed the single decision tree, reducing MAE to $64.21 and producing four predictions within $1.00 of the true values. This demonstrates that while individual trees capture useful structure, aggregating many trees leads to more stable and accurate reimbursement predictions.
+
+<figure style="text-align: left;">
+    <img src="Images/random_forest.png" alt="Top Ten Most Influential Features: Random Forest" width="95%" height="auto">
+    <figcaption>Figure 8: Top Ten Most Influential Features: Random Forest.</figcaption>
+</figure>
+
+The top 10 most influential features identified by the Random Forest are seen in the figure above. These importance scores reinforce several core conclusions:
+
+- Interaction features dominate, confirming that reimbursement depends on combined effects of duration, distance, and spending.
+
+- Receipts-based features (raw, log-transformed, and squared) consistently rank near the top, highlighting spending as the primary driver.
+
+- Rounding anomaly flags (is_cents_49, is_cents_99) appear among the top features, providing quantitative support for anecdotal bug reports.
+
+##### 5.2.3 Gradient Boosting 
+
+Gradient boosting models build trees sequentially, with each new tree focusing on correcting the errors of previous ones. This makes boosting particularly effective at modeling complex, non-linear relationships and subtle interaction effects. We evaluated two popular boosting frameworks: XGBoost and LightGBM.
+
+##### 5.3.3.1 XGBoost Results and Summary of Key Findings.
+
+XGBoost is a highly optimized gradient boosting framework known for strong performance on structured tabular data.
+
+From our analyses, we found that:
+
+XGBoost achieved the lowest MAE among all tree-based models at $59.20, with four close matches. This performance indicates that boosting is particularly effective at capturing the layered, non-linear reimbursement logic, especially in high-spend or high-intensity travel scenarios.
+
+##### 5.2,3,2 LightGBM Results and Summary of Key Findings.
+
+LightGBM is another gradient boosting framework optimized for speed and efficiency, especially on large feature sets.
+
+From our analyses, we found that:
+
+LightGBM achieved an MAE of $70.04, outperforming the single decision tree but underperforming Random Forest and XGBoost. While efficient, its performance suggests that the reimbursement logic may benefit more from deeper sequential corrections than from LightGBM’s default optimizations.
+
+##### Final Comparison
+
+<div style="text-align: center; font-size: smaller; opacity: 0.7; margin-bottom: 5px;">
+  Table 13:Comparing the tree-based methods against each other to see which method is the strongest candidate for the final Hybrid model
+</div>
+
+<figure style="text-align: left;">
+    <img src="Images/final_tree-based.png" alt=" Comparing the tree-based methods against each other to see which method is the strongest candidate for the final Hybrid model." width="95%" height="auto">
+</figure>
+
+Among tree-based methods, XGBoost provides the strongest predictive performance, while Random Forest offers an excellent balance between accuracy and interpretability. The Decision Tree, although less accurate, plays a crucial role in exposing the rule-based structure of the legacy reimbursement system. Together, these models confirm that the system relies heavily on non-linear thresholds, interaction effects, and conditional logic—characteristics that are best captured through ensemble tree-based approaches.
+
 #### 5.3 Advanced Techniques
+
+##### 5.3.1 Support Vector Regression Results and Summary of Key Findings
+
+Support Vector Regression (SVR) is a kernel-based method that attempts to find an optimal hyperplane in a high-dimensional feature space such that prediction errors remain within a specified tolerance. SVR is well-suited for modeling non-linear patterns through the use of kernel functions, but it is computationally expensive and highly sensitive to outliers and parameter choices.
+
+From our analyses, we found that:
+
+The SVR model achieved a mean absolute error (MAE) of $82.36, with only one prediction falling within $1.00 of the true reimbursement value. While the model was able to capture some non-linear structure, its overall performance did not surpass the best-performing linear or ensemble models. This suggests that although the reimbursement logic contains non-linear components, SVR may be overly sensitive to noise and outliers present in the dataset, limiting its practical effectiveness in this context.
+
+##### 5.3.2 Neural Networks Results and Summary of Key Findings
+
+Neural networks are highly flexible models capable of learning complex non-linear relationships through layered transformations. Given the relatively modest dataset size (1,000 observations), a deep or wide network would be prone to overfitting. Therefore, we implemented a conservative Multi-Layer Perceptron (MLP) architecture with two hidden layers to balance expressive power and generalization.
+
+From our analyses, we found that:
+
+The neural network achieved an MAE of $82.86 and produced four predictions within $1.00 of the true values. Its performance is comparable to SVR but does not exceed that of the stronger regression or ensemble-based approaches. These results indicate that while neural networks can model the complex, non-linear behavior of the reimbursement system, the limited data size and inherent noise constrain their ability to significantly outperform simpler, well-engineered models.
+
+##### 5.3.3 Ensemble Method Results and Summary of Key Findings
+
+Ensemble methods combine multiple base models to improve predictive accuracy and robustness. By aggregating different learning algorithms, ensembles often reduce variance and capture a wider range of patterns than any single model alone. We evaluated two ensemble strategies: Voting Regression and Stacking Regression.
+
+###### I - Voting Regressor
+
+The Voting Regressor aggregates predictions from several base models by averaging their outputs. This approach helps smooth out the instability and local errors of individual models, particularly tree-based learners.
+
+From our analyses, we found that:
+
+The Voting Regressor substantially improved performance relative to SVR and neural networks, reducing the MAE to $63.45. This indicates that combining diverse models helps stabilize predictions and better capture the multifaceted reimbursement logic embedded in the legacy system.
+
+###### II - Stacking Regressor
+
+Stacking is a more advanced ensemble technique in which a meta-model learns how to optimally combine the predictions of several base models. In this case, a linear regression model was used as the meta-learner.
+
+From our analyses, we found that:
+
+The Stacking Regressor delivered the best performance among all advanced techniques, achieving the lowest MAE ($58.90) and the strongest overall score. This suggests that the reimbursement system’s behavior is best modeled as a structured combination of multiple predictive patterns rather than a single monolithic model.
+
+##### Final Comparison
+
+<div style="text-align: center; font-size: smaller; opacity: 0.7; margin-bottom: 5px;">
+  Table 14: Comparing the advanced techniques against each other to see which architecture is the strongest candidate for the final Hybrid model.
+</div>
+
+<figure style="text-align: left;">
+    <img src="Images/advanced_tech.png" alt="Compare the advanced techniques against each other to see which architecture is the strongest candidate for the final Hybrid model." width="65%" height="auto">
+</figure>
+
+Comparing the advanced techniques, ensemble methods, particularly stacking clearly outperform standalone models such as SVR and neural networks. While high-capacity models are capable of learning complex relationships, the strongest results emerge from architectures that blend multiple modeling perspectives. These findings indicate that a hybrid or ensemble-based approach is the most promising candidate for accurately replicating the behavior of the legacy reimbursement system.
 
 #### 5.4 Rule-Based Learning
 
@@ -508,6 +678,258 @@ From our analyses, we found that:
 
 - The presence of features like is_long_trip, is_receipts_over_800, and high_receipts across almost all strong rules shows that spending behavior and trip length are the dominant drivers in the system’s logic.
 
+#### 5.5 Final Hybrid Rule-Based and Machine Learning Solution
+
+The final solution adopts a hybrid modeling strategy that combines explicit business-rule reconstruction with data-driven machine learning corrections. This approach was chosen because early experiments showed that neither manual rules nor standalone machine learning models could, on their own, accurately reproduce the legacy reimbursement system. The system exhibits structured, rule-based behavior alongside complex non-linear adjustments, rounding quirks, and hidden penalties that require both approaches to be used jointly.
+
+This section describes the full step-by-step process used to construct the final solution and summarizes its results.
+
+##### 5.5.1 Step 1: Baseline Rule-Based System Reconstruction
+
+We begin by implementing a baseline reimbursement calculator intended to approximate the core logic of the legacy system. This baseline encodes the business rules inferred from interviews and exploratory analysis, providing a structured but imperfect approximation.
+
+The baseline model consists of the following components:
+
+- Per-diem calculation proportional to trip duration
+
+- Tiered mileage reimbursement, using three mileage brackets with decreasing marginal rates
+
+- Tiered receipt reimbursement, including:
+
+  - A penalty for very low receipts on multi-day trips
+  
+  - A “sweet spot” range where receipts are rewarded at a higher rate
+  
+  - Reduced marginal reimbursement for spending beyond the sweet spot
+
+- Conditional bonuses and penalties, including:
+
+  - A fixed bonus for exactly five-day trips
+  
+  - An efficiency bonus based on miles-per-day and receipts-per-day thresholds that vary by trip length
+  
+  - Penalties for low daily spending
+  
+  - Penalties for long trips with unusually high daily receipts
+
+- A known rounding quirk, where certain cent values (e.g., .49, .99) trigger a small additive adjustment
+
+This logic is implemented in the calculate_reimbursement function and produces the baseline prediction baseline_pred.
+
+##### 5.5.2 Step 2: Baseline Evaluation and Diagnostic Slicing
+
+To understand where the baseline logic succeeds and fails, we evaluate it using a consistent set of metrics:
+
+- Mean Absolute Error (MAE)
+
+- Exact matches (± $0.01)
+
+- Close matches (± $1.00)
+
+Additionally, we introduce slice-based diagnostics, evaluating performance across specific subsets of the data (for example, short trips, long trips, low mileage, high receipts). This step is critical for identifying systematic bias, not just overall error.
+
+**Baseline performance revealed major deficiencies:**
+
+  - Overall MAE of $196.87, with almost no close predictions
+  
+  - Severe underpayment for short trips
+  
+  - Severe overpayment for long trips
+  
+  - Large overpayment in the receipt “sweet spot” range
+  
+  - Mileage slope mismatches at both low and high mileage levels
+
+These diagnostics confirmed that while the baseline captures the structure of the system, its constants, slopes, and thresholds are misaligned with the true legacy behavior.
+
+##### 5.5.3 Step 3: Residual Modeling Strategy
+
+Rather than abandoning the rule-based model, we reframe the problem as a residual learning task. The idea is to let business rules handle the coarse structure, while machine learning models learn the remaining error.
+
+We define the residual as:
+
+$$
+\text{residual} = \text{expected output} - \text{baseline prediction}
+$$
+
+Machine learning models are then trained to predict this residual.
+
+This strategy imposes important constraints:
+
+- The ML models are not free to learn arbitrary mappings
+
+- They must operate within the logic scaffold imposed by the baseline
+
+- This reduces overfitting and improves interpretability
+
+##### 5.5.4 Step 4: Feature Engineering for Residual Learning
+
+To support residual modeling, we construct a rich feature set derived directly from the business rules and diagnostic findings. A total of 27 engineered features are created, as seen at the feature engineering section of this document.
+
+These features encode both explicit business logic and continuous interaction effects, allowing models to learn where and how the baseline logic deviates from the legacy system.
+
+##### 5.5.5 Step 5: Residual Model Training
+
+The dataset is split into a 75% training set and a 25% validation set. Two gradient boosting models are trained:
+
+- XGBoost Regressor
+
+- Scikit-learn GradientBoosting Regressor (GBT)
+
+Both models are trained with early stopping or staged prediction to prevent overfitting and identify the optimal number of trees.
+
+**Validation results:**
+
+- Baseline MAE: $196.87
+
+- Residual ML MAE: ≈ $59
+
+Both boosting models converge to nearly identical performance, indicating that the residual structure is strong and learnable.
+
+##### 5.5.6 Step 6: Model Blending
+
+To reduce variance and improve stability, we blend the two residual models by averaging their predictions. The final uncalibrated prediction is computed as:
+
+$$
+ \text{final prediction}=baseline+0.5×\text{GBT residual}+0.5×\text{XGB residual}
+$$
+
+This blended approach produces a substantial improvement:
+
+- MAE reduced to **$37.33**
+
+- Close matches (< $1.00) increased from 2 to 22
+
+At this stage, the model accurately captures the shape of the reimbursement logic but still exhibits small, systematic biases.
+
+##### 5.5.7 Step 7: Isotonic Calibration
+
+To correct the remaining systematic drift, we apply Isotonic Regression as a final calibration step. This monotonic mapping adjusts predicted values to better align with true outputs without altering the learned structure.
+
+Calibration is trained on the full dataset and applied to the blended predictions.
+
+##### 5.5.8 Final Results and Interpretation
+
+The fully calibrated hybrid model achieves the best performance observed:
+
+- MAE: **$33.56**
+
+- Exact matches: **20**
+
+- Close matches (< $1.00): **36**
+
+- Near-zero bias across all diagnostic slices
+
+Most notably:
+
+- Short-trip underpayment and long-trip overpayment are almost completely eliminated
+
+- Mileage slope errors are corrected
+
+- Receipt sweet-spot bias is reduced by over 95%
+
+- Remaining error appears largely random or attributable to rare edge cases
+
+##### 5.5.9 Summary of Key Findings
+
+The final hybrid solution demonstrates that:
+
+- The legacy system is fundamentally rule-based, but with nonlinear corrections
+
+- Explicit rules provide structure, but machine learning is essential for capturing hidden adjustments
+
+- Residual modeling is an effective and interpretable way to combine domain knowledge with statistical learning
+
+- Calibration is critical for achieving cent-level precision
+
+This combined approach successfully reconstructs the legacy reimbursement system with high accuracy, low bias, and strong interpretability, making it suitable as a functional replacement or audit reference.
+
 
 ### 6. Results and Insights
+
+#### 6.1 Overall Model Performance
+
+Across all experiments conducted in this project, the final hybrid model described in Section 5.5 delivers the strongest and most reliable performance. Compared to standalone statistical, machine learning, or symbolic approaches, the hybrid system achieves the lowest error while maintaining interpretability and structural consistency with inferred business logic.
+
+Key performance outcomes of the final solution include:
+
+- MAE reduced from **$196.87 (baseline rules) to $33.56**
+
+- **20 exact matches** within ±$0.01
+
+- **36 close matches** within ±$1.00
+
+- Near-zero bias across all major diagnostic slices
+
+This confirms that neither explicit rules nor machine learning alone are sufficient to replicate the legacy system accurately; the strongest results emerge when both are combined in a constrained and sequential manner.
+
+#### 6.2 Insights into the Legacy System’s Behavior
+
+Several important insights about the legacy reimbursement system emerge from the modeling process:
+
+1. The system is primarily rule-based in structure
+Decision trees, symbolic regression attempts, and rule reconstruction all indicate that reimbursements are governed by discrete thresholds, tiered rates, and conditional logic rather than a smooth continuous function.
+
+2. Receipts are the dominant driver of reimbursement
+Across correlation analysis, feature importance rankings, tree splits, and association rules, receipt-related features consistently exert the strongest influence on outcomes. However, their effect is non-linear and subject to diminishing returns and penalties.
+
+3. Efficiency metrics matter more than raw totals
+Features such as miles per day, receipts per day, and interaction terms (e.g., days × miles) repeatedly outperform raw mileage or duration alone. This suggests the system evaluates how “efficiently” a trip is conducted, not just how large it is.
+
+4. Long and short trips are treated asymmetrically
+Baseline diagnostics and residual patterns reveal systematic penalties for very short trips and diminishing returns or penalties for very long trips, consistent with interview feedback and observed slice bias.
+
+5. Hidden adjustments and quirks materially affect outcomes
+Rounding anomalies, cent-based effects, and unexplained variance reported by users are supported empirically by feature importance and calibration improvements. These effects are small individually but accumulate to meaningful error if ignored.
+
+6. Remaining error is largely irreducible
+After residual modeling and isotonic calibration, remaining prediction error appears largely random or tied to rare edge cases, suggesting that the core logic of the system has been effectively captured.
+
+#### 6.3 Why the Hybrid Approach Works
+
+The success of the final model stems from the way responsibilities are divided:
+
+- Rules handle structure: per-diem logic, tiers, bonuses, and penalties
+
+- Machine learning handles correction: nonlinear adjustments, hidden interactions, and slope mismatches
+
+- Calibration handles bias: cent-level rounding and systematic drift
+
+This layered design mirrors how the legacy system itself appears to operate and explains why purely data-driven or purely rule-based approaches consistently underperformed.
+
 ### 7. Recommendations
+
+#### 7.1 Adopt the Hybrid Model as the System Replacement
+
+The final hybrid rule-based and machine learning solution should be adopted as the functional replacement for the legacy reimbursement system. It achieves high accuracy, minimal bias, and strong interpretability, making it suitable for operational deployment or audit use.
+
+#### 7.2 Preserve Explicit Business Rules in Production
+
+Core reimbursement logic such as per-diem rates, mileage tiers, and known penalties should remain explicitly coded rather than learned implicitly. This ensures transparency, regulatory compliance, and ease of future modification.
+
+#### 7.3 Use Machine Learning Only for Residual Correction
+
+Machine learning should continue to be applied only to residuals rather than full reimbursement prediction. This constraint:
+
+- Reduces overfitting
+
+- Improves stability
+
+- Makes the system easier to debug and explain
+
+#### 7.4 Retain Calibration as a Mandatory Final Step
+
+Isotonic calibration proved critical for eliminating systematic bias and rounding effects. Any future retraining or data refresh should include recalibration to maintain cent-level accuracy.
+
+#### 7.5 Monitor High-Risk Segments Over Time
+
+Trips involving long durations, high receipts, or extreme efficiency metrics should be monitored closely, as these segments historically produce the largest errors and policy sensitivity.
+
+#### 7.6 Improve Documentation and Governance
+
+To avoid future reverse-engineering efforts, all reimbursement logic changes should be documented, versioned, and validated against historical outcomes. Diagnostic slicing should be incorporated as a routine quality assurance tool.
+
+#### 7.7 Treat Remaining Error as Acceptable Noise
+
+Given the final model’s performance, remaining discrepancies are unlikely to represent missing core logic. Attempting to eliminate the last few dollars of error risks overfitting and reduced robustness.
+
