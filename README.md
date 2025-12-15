@@ -1,50 +1,186 @@
-# ECU Machine Learning Team Project
-## Legacy-System-Reverse-Engineering-Challenge
+# Legacy Reimbursement System — Machine Learning Reverse Engineering
 
-## Team Members
-- Jayath Premasinghe
-- Ambe Mbong-Nwi Nchang
+**Project Type:** Team Project  
+**Group Number:** **5**
 
-## Goal
-Our team will reverse-engineer a 60-year-old travel reimbursement system using only historical data and employee interviews, applying machine learning techniques to discover hidden business logic patterns and create predictive models that replicate legacy system behavior.
+### Team Members
 
-## Scenario
-Our team has been hired as ML consultants by ACME Corporation. Their legacy reimbursement system has been running for 60 years, no one knows how it works, but it is still used daily. A new system has been built, but the ACME Corporation is confused by the differences in results. Our mission is to use machine learning to understand the original business logic and create a model that can explain and predict the legacy system’s behavior.
+- Jayath Premasinghe  
+- Ambe Mbong-Nwi Nchang  
 
+---
 
-## Project Specification
-### Problem Statement
+## Project Overview
 
-#### Input Variables (provided by the legacy system):
+This project reverse-engineers a long-running black-box travel reimbursement system whose internal logic is undocumented and opaque.  
+The legacy system contains hard-coded business rules, non-linear logic, and deterministic artifacts that make it difficult to replace using a single mathematical formula.
 
-- trip_duration_days: Number of days spent traveling (integer)
+Using:
 
-- miles_traveled: Total miles traveled (integer)
+- Historical reimbursement data  
+- Employee interview insights  
+- Machine learning and rule-based modeling  
 
-- total_receipts_amount: Total dollar amount of receipts (float)
+the objective is to:
 
-#### Output Variable (to predict):
+- Discover hidden reimbursement logic  
+- Replicate the behavior of the legacy system  
+- Implement a reliable, interpretable, and production-ready replacement model  
 
-- Single numeric reimbursement amount (float, rounded to 2 decimal places)
+---
 
-#### Success Criteria:
+## Problem Definition
 
-- Exact matches: Cases within ±$0.01±$0.01 of the expected output
+### Inputs
 
-- Close matches: Cases within ±$1.00±$1.00 of the expected output
+The system accepts exactly three parameters:
 
-- Score: Lower is better (combines accuracy and precision)
-- 
+- `trip_duration_days` — integer  
+- `miles_traveled` — float  
+- `total_receipts_amount` — float  
 
-### Dataset Description
+### Output
 
-1,000 historical input/output examples from public_cases.json is available. Create a random sample of 750 examples for use in training the machine learning models. The remaining 250 examples should be used for testing.
+- A single reimbursement amount (USD), rounded to two decimal places  
 
-#### Additional Resources:
+### Evaluation Criteria
 
-- Product Requirements Document (PRD) with business context (available at https://github.com/8090-inc/top-coder-challenge/blob/main/PRD.md).
+- Exact match: ± $0.01  
+- Close match: ± $1.00  
+- Score: combined accuracy and precision (lower is better)  
 
-- Employee interview transcripts with system behavior hints (available at https://github.com/8090-inc/top-coder-challenge/blob/main/INTERVIEWS.md).
+---
 
-- Domain knowledge about travel reimbursement policies.
+## Repository Structure and Project Approach
 
+The repository is organized to reflect a phased analytical workflow, progressing from data exploration to final system integration.
+
+---
+
+### Exploratory Data Analysis and Feature Engineering
+
+#### `data_exploration_report.ipynb`
+
+This notebook performs:
+
+- Statistical summaries of raw input and output variables  
+- Distribution analysis and outlier detection  
+- Correlation analysis with the reimbursement amount  
+- Missing data assessment  
+- Translation of interview insights into engineered features  
+
+A total of 24 domain-specific features are created, including ratios, interaction terms, polynomial features, and rule-based flags.  
+This notebook establishes the business logic hypotheses that guide all subsequent modeling.
+
+---
+
+### Model Evaluation by Machine Learning Category
+
+Each required machine learning category is evaluated independently using a dedicated notebook.
+
+#### `linear_regression_variants.ipynb`
+
+- Simple Linear Regression  
+- Ridge Regression  
+- Lasso Regression  
+- Polynomial Regression  
+
+Demonstrates underfitting and inability to model threshold-driven behavior.
+
+---
+
+#### `tree_based_methods.ipynb`
+
+- Decision Trees  
+- Random Forest  
+- Gradient Boosting  
+- XGBoost  
+- LightGBM  
+
+Shows strong performance due to the ability to model piecewise, rule-like logic.
+
+---
+
+#### `advance_techniques.ipynb`
+
+- Support Vector Regression  
+- Neural Networks (MLP)  
+- Ensemble methods (stacking and voting)  
+
+Evaluates advanced techniques and highlights their limitations in deterministic systems.
+
+---
+
+#### `rule_based_learning.ipynb`
+
+- Explicit rule extraction  
+- Deterministic baseline logic  
+- Validation of interview-derived rules  
+
+Provides the structural backbone for the final hybrid approach.
+
+---
+
+### Final Model and Results
+
+#### `solution.ipynb`
+
+This notebook integrates all prior analysis and implements the final model:
+
+- Rule-based baseline reimbursement logic  
+- Residual learning using Gradient Boosting and XGBoost  
+- Model blending to reduce variance  
+- Isotonic calibration to remove systematic bias  
+
+Final evaluation metrics and comparison tables are produced here.
+
+---
+
+### Technical Report
+
+#### `technical_report.qmd`
+
+A comprehensive technical report covering:
+
+- Problem formulation  
+- Data exploration  
+- Feature engineering strategy  
+- Model evaluation and comparison  
+- Final model selection  
+- Business insights and recommendations  
+
+---
+
+## Data Files
+
+- `public_cases.json`  
+  Raw dataset of 1,000 labeled reimbursement cases  
+
+- `public_cases_derived_features.csv`  
+  Dataset containing original inputs plus 24 engineered features  
+
+---
+
+## System Integration and Execution
+
+### `reimbursement_calculator.py`
+
+This file implements the production inference pipeline, including:
+
+1. Rule-based baseline computation  
+2. Feature construction  
+3. Residual machine learning prediction  
+4. Isotonic calibration  
+5. Deterministic rounding  
+
+This script is invoked exclusively through `run.sh`, in accordance with the required execution contract.
+
+---
+
+### Running the Model (Required Interface)
+
+The solution must be executed using `run.sh`.
+
+```bash
+chmod +x run.sh
+./run.sh <trip_duration_days> <miles_traveled> <total_receipts_amount>
