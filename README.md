@@ -57,9 +57,9 @@ The repository is organized to reflect a phased analytical workflow, progressing
 
 ---
 
-### Exploratory Data Analysis and Feature Engineering
+## Exploratory Data Analysis and Feature Engineering
 
-#### `data_exploration_report.ipynb`
+### `data_exploration_report.ipynb`
 
 This notebook performs:
 
@@ -74,11 +74,11 @@ This notebook establishes the business logic hypotheses that guide all subsequen
 
 ---
 
-### Model Evaluation by Machine Learning Category
+## Model Evaluation by Machine Learning Category
 
 Each required machine learning category is evaluated independently using a dedicated notebook.
 
-#### `linear_regression_variants.ipynb`
+### `linear_regression_variants.ipynb`
 
 - Simple Linear Regression  
 - Ridge Regression  
@@ -89,7 +89,7 @@ Demonstrates underfitting and inability to model threshold-driven behavior.
 
 ---
 
-#### `tree_based_methods.ipynb`
+### `tree_based_methods.ipynb`
 
 - Decision Trees  
 - Random Forest  
@@ -101,7 +101,7 @@ Shows strong performance due to the ability to model piecewise, rule-like logic.
 
 ---
 
-#### `advance_techniques.ipynb`
+### `advance_techniques.ipynb`
 
 - Support Vector Regression  
 - Neural Networks (MLP)  
@@ -111,7 +111,7 @@ Evaluates advanced techniques and highlights their limitations in deterministic 
 
 ---
 
-#### `rule_based_learning.ipynb`
+### `rule_based_learning.ipynb`
 
 - Explicit rule extraction  
 - Deterministic baseline logic  
@@ -121,9 +121,9 @@ Provides the structural backbone for the final hybrid approach.
 
 ---
 
-### Final Model and Results
+## Final Model and Results
 
-#### `solution.ipynb`
+### `solution.ipynb`
 
 This notebook integrates all prior analysis and implements the final model:
 
@@ -136,9 +136,9 @@ Final evaluation metrics and comparison tables are produced here.
 
 ---
 
-### Technical Report
+## Technical Report
 
-#### `technical_report.qmd`
+### `technical_report.qmd`
 
 A comprehensive technical report covering:
 
@@ -177,10 +177,69 @@ This script is invoked exclusively through `run.sh`, in accordance with the requ
 
 ---
 
-### Running the Model (Required Interface)
+## Running the Model (Required Interface)
 
 The solution must be executed using `run.sh`.
 
 ```bash
 chmod +x run.sh
 ./run.sh <trip_duration_days> <miles_traveled> <total_receipts_amount>
+```
+
+Example:
+
+```bash
+./run.sh 5 250 150.75
+```
+
+Output:
+
+```
+487.25
+```
+
+The script:
+
+- Accepts exactly three parameters  
+- Outputs a single numeric value  
+- Runs in under five seconds per test case  
+- Uses no external services or network calls  
+
+---
+
+## Evaluation
+
+To evaluate performance across all known cases:
+
+```bash
+chmod +x eval.sh
+./eval.sh
+```
+
+The evaluation reports:
+
+- Exact matches (± $0.01)  
+- Close matches (± $1.00)  
+- Mean absolute error (MAE)  
+- Overall score (lower is better)  
+
+---
+
+## Final Model Performance
+
+| Model                     | MAE ($) | Exact Matches (±$0.01) | Close Matches (±$1.00) |
+|---------------------------|---------|------------------------|------------------------|
+| Blended ML (uncalibrated) | 37.33   | 0                      | 22                     |
+| Final Model (calibrated)  | 33.56   | 20                     | 36                     |
+
+Calibration significantly improves cent-level accuracy while preserving prediction ordering.
+
+---
+
+## Key Insights
+
+- The legacy system behaves as a deterministic, rule-based engine  
+- Reimbursement logic depends heavily on trip duration thresholds, mileage tiers, and receipt spending bands  
+- Non-linear behavior and historical rounding artifacts are present  
+- Tree-based boosting models best capture this structure  
+- Calibration is required for cent-level replication
